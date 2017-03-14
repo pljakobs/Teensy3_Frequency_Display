@@ -19,7 +19,7 @@
 #define bPin  17
 #define OLED_RESET 13
 
-//#define DEBUG
+#define DEBUG
 
 Adafruit_SSD1306 display(OLED_RESET);
 Encoder myEncoder(ePin1, ePin2);
@@ -30,6 +30,7 @@ AudioAnalyzeFFT1024      myFFT;          //xy=382,189
 AudioConnection          patchCord1(audioInput, myFFT);
 // GUItool: end automatically generated code
 
+#define VIS_ITEMS     3
 #define VIS_FREQ      0
 #define VIS_FREQ_PEAK 1
 #define VIS_ROLL      2
@@ -66,12 +67,14 @@ elapsedMillis timeSinceLastFrame;
 
 char* mainMenu[]={"Visualization","Brightness","Switch Off","Exit"};
 uint8_t mainItems=4;
-char* visMenu[] ={"Freq graph","Rolling","Peak hold"};
-uint8_t visItems=3;
+char* visMenu[VIS_ITEMS];
+
+//char* visMenu[] ={"Freq graph","Peak hold","Rolling"};
+//uint8_t visItems=3;
 uint8_t menuItem,menuButton;
 uint8_t bright=20;
 uint8_t waitTime=40;
-bool pressed,inMenu;
+bool pressed,inMenu,barsValid;
 long oldPosition,Position;
 
 const float e=2.718281828;
@@ -85,7 +88,9 @@ void setup(){
     Serial.println("Starting setup");
   #endif
   pinMode(bPin,INPUT_PULLUP);
-
+  visMenu[VIS_FREQ]="Freq graph";
+  visMenu[VIS_FREQ_PEAK]="Peak Hold";
+  visMenu[VIS_ROLL]="Rolling";
   AudioMemory(12);
   myFFT.windowFunction(AudioWindowHanning1024);
 
@@ -124,6 +129,7 @@ void loop() {
   if(!digitalRead(bPin)) menuButton=true;
   if (myFFT.available()){
     collectFFT();
+    barsValid=false;
    }
    if(timeSinceLastFrame>waitTime){
       drawVisualization(DISP_ARRAY);
@@ -167,7 +173,7 @@ void loop() {
         while(!buttonPressed(bPin)){
           Position=myEncoder.read();  
           if(Position>oldPosition+ROT_OFFS){
-            visualizationMode==visItems-1?visItems:visualizationMode++;
+            visualizationMode==VIS_ITEMS-1?VIS_ITEMS:visualizationMode++;
             printMenuItem(2,visMenu,visualizationMode);
             display.display();
             oldPosition=Position;
@@ -264,22 +270,24 @@ void computeBars(){
       }
     }
   }
+  barsValid=true;
 }
 
 void drawVisualization(int screen){
   switch(visualizationMode){
-  case VIS_FREQ:
-    visualizeFreq(screen,false);
-    break;
-  case VIS_FREQ_PEAK:
-    visualizeFreq(screen,true);
-  case VIS_ROLL:
-    if(screen=DISP_OLED){
-      visualizeFreq(screen,false); //monochrome OLED can't do rolling color
-    }else{
-      visualizeRoll(screen);
-    }
-    break;
+    case VIS_FREQ:
+      visualizeFreq(screen,false);
+      break;
+    case VIS_FREQ_PEAK:
+      visualizeFreq(screen,true);
+      break;
+    case VIS_ROLL:
+      if(screen==DISP_OLED){
+        visualizeFreq(screen,false); //monochrome OLED can't do rolling color
+      }else{
+        visualizeRoll(screen);
+      }
+      break;
   }
 }
 bool buttonPressed(uint8_t pin){
@@ -312,10 +320,12 @@ void visualizeFreq(int disp,bool peak){
    * ------------------------------------------------------------------ */  
 
   // Serial.println("visualizeFreq()");
-  computeBars();
+  #ifdef DEBUG
+    Serial.printf("entered visualizeFreq with disp=%i and peak=%b",disp,peak);
+  #endif
+  if(!barsValid) computeBars();
 
   if(disp==DISP_ARRAY){
-    display.fillScreen(0);
     for(uint16_t x=0;x<=7;x++){
       for(uint16_t y=0;y<=7;y++){
         if(y+1>bar[x]){
@@ -335,6 +345,7 @@ void visualizeFreq(int disp,bool peak){
     }
     matrix.show();
   }else if(disp==DISP_OLED){
+    display.fillScreen(0);
     for(uint16_t x=0;x<=7;x++){
       display.fillRect(x*16,32-(bar[x]*4),16,bar[x]*4,WHITE);
       display.drawRect(x*16,32-(bar[x]*4),16,bar[x]*4,0);
@@ -347,18 +358,20 @@ void visualizeFreq(int disp,bool peak){
   }
 }
 
-void visualizeRoll(bool screen){
- for(uint16_t x=0;x<=7;x++){
-  float avg=(level[x][0]+level[x][1]+level[x][2]+level[x][3]+level[x][4]+level[x][5]+level[x][6]+level[x][7])/8;
-  for(uint16_t y=0;y<=7;y++){
-    uint32_t c=hsv2rgb((int)(level[x][y]*210)+150,255,(uint16_t)(255*avg));
-    //
-    //Serial.printf("x: %i, y: %i, level: %f [%i] bright: %f [%i] r: %i, g: %i, b:%i \n",x,y,level[x][y],270-(int)(level[x][y]*180),avg,(uint16_t)(255*avg),(c&0xff0000)>>16,(c&0xff00)>>8,c&0xff);
-    setPixel(x,y,c); 
-  }
-  //Serial.println();
- }
- matrix.show();
+void visualizeRoll(int disp){
+  #ifdef DEBUG
+  #endif
+  for(uint16_t x=0;x<=7;x++){
+    float avg=(level[x][0]+level[x][1]+level[x][2]+level[x][3]+level[x][4]+level[x][5]+level[x][6]+level[x][7])/8;
+    for(uint16_t y=0;y<=7;y++){
+      uint32_t c=hsv2rgb((int)(level[x][y]*210)+150,255,(uint16_t)(255*avg));
+      //
+      //Serial.printf("x: %i, y: %i, level: %f [%i] bright: %f [%i] r: %i, g: %i, b:%i \n",x,y,level[x][y],270-(int)(level[x][y]*180),avg,(uint16_t)(255*avg),(c&0xff0000)>>16,(c&0xff00)>>8,c&0xff);
+      setPixel(x,y,c); 
+    }
+    //Serial.println();
+   }
+   matrix.show();
 }
 
 void visualizePeakHold(bool screen){
