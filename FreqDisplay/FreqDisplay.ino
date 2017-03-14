@@ -19,6 +19,8 @@
 #define bPin  17
 #define OLED_RESET 13
 
+//#define DEBUG
+
 Adafruit_SSD1306 display(OLED_RESET);
 Encoder myEncoder(ePin1, ePin2);
 
@@ -28,9 +30,12 @@ AudioAnalyzeFFT1024      myFFT;          //xy=382,189
 AudioConnection          patchCord1(audioInput, myFFT);
 // GUItool: end automatically generated code
 
-#define VIS_TIME 0
-#define VIS_ROLL 1
-#define VIS_PEAK 2
+#define VIS_FREQ      0
+#define VIS_FREQ_PEAK 1
+#define VIS_ROLL      2
+
+#define DISP_ARRAY 1
+#define DISP_OLED  2
 
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, 1, 1, MatrixPin,
   NEO_TILE_TOP   + NEO_TILE_LEFT   + NEO_TILE_ROWS   + NEO_TILE_PROGRESSIVE +
@@ -45,13 +50,15 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, 1, 1, MatrixPin,
 // show all 8 bars.  Higher numbers are more sensitive.
 float scale = 60.0;
 
-// An array to hold the 16 frequency bands
+// array to hold the frequency bands
 float level[8][8];
+// array holding the bar hights
+uint8_t bar[8];
 
 // This array holds the on-screen levels.  When the signal drops quickly,
 // these are used to lower the on-screen level 1 bar per update, which
 // looks more pleasing to corresponds to human sound perception.
-uint32_t   pixel[8][8];
+// uint32_t   pixel[8][8];
 
 uint16_t   visualizationMode;
 
@@ -59,18 +66,26 @@ elapsedMillis timeSinceLastFrame;
 
 char* mainMenu[]={"Visualization","Brightness","Switch Off","Exit"};
 uint8_t mainItems=4;
-char* visMenu[] ={"Time graph","Rolling","Peak hold"};
+char* visMenu[] ={"Freq graph","Rolling","Peak hold"};
 uint8_t visItems=3;
 uint8_t menuItem,menuButton;
 uint8_t bright=20;
-bool pressed;
+uint8_t waitTime=40;
+bool pressed,inMenu;
 long oldPosition,Position;
+
+const float e=2.718281828;
+float decayVal=0.01;
 
 void setup(){
   //pinMode(ePin1,INPUT_PULLUP);
   //pinMode(ePin2,INPUT_PULLUP);
-  pinMode(bPin,INPUT_PULLUP);
   Serial.begin(115200);
+  #ifdef DEBUG
+    Serial.println("Starting setup");
+  #endif
+  pinMode(bPin,INPUT_PULLUP);
+
   AudioMemory(12);
   myFFT.windowFunction(AudioWindowHanning1024);
 
@@ -85,13 +100,18 @@ void setup(){
   
   matrix.fillScreen(matrix.Color(255,0,0));
   matrix.show();
-  delay(500);
-  for(int c=255;c!=0;c--){
-    matrix.fillScreen(matrix.Color(c,0,0));
+  #ifdef DEBUG
+    Serial.println("starting fill screen fade");
+  #endif
+  for(int c=1;c!=53;c++){
+    #ifdef DEBUG
+      Serial.printf("step %i\n",c);
+    #endif
+    matrix.fillScreen(matrix.Color((uint8_t)(255*pow(e,-decayVal*c)),0,0));
     matrix.show();
     delay(10);
   }
-  visualizationMode=VIS_TIME;
+  visualizationMode=VIS_FREQ;
 }
 
 void loop() {
@@ -103,25 +123,12 @@ void loop() {
 
   if(!digitalRead(bPin)) menuButton=true;
   if (myFFT.available()){
-    //Serial.println("got new FFT");
-    for(int i=7;i>=1;i--){
-      for(int j=0;j<=7;j++){
-        level[i][j]=level[i-1][j];
-      }
-    }
-    level[0][0] = level[0][0]/2 + myFFT.read(0,  1)/2;
-    level[0][1] = level[0][1]/2 + myFFT.read(2,  6)/2;
-    level[0][2] = level[0][2]/2 + myFFT.read(7,  15)/2;
-    level[0][3] = level[0][3]/2 + myFFT.read(16, 32)/2;
-    level[0][4] = level[0][4]/2 + myFFT.read(33, 66)/2;
-    level[0][5] = level[0][5]/2 + myFFT.read(67, 131)/2;
-    level[0][6] = level[0][6]/2 + myFFT.read(132,257)/2;
-    level[0][7] = level[0][0]/2 + myFFT.read(258,511)/2;
-
-    if(timeSinceLastFrame>40){
-      drawVisualization(true);
+    collectFFT();
+   }
+   if(timeSinceLastFrame>waitTime){
+      drawVisualization(DISP_ARRAY);
+      if(!inMenu) drawVisualization(DISP_OLED);
       timeSinceLastFrame=0;
-    }
   }else if(buttonPressed(bPin)) {
     /* 
      *  Menu!
@@ -208,19 +215,72 @@ void loop() {
     }
   }
 }
+void showProgress(int p){
+  p/=4;
+  int x,y,q;
+  for(q=0;q<63;q++){
+    y=q/8;
+    x=q-8*y;
+    if(q<p){
+      setPixel(x,y,makeColor(0,0,127));
+    }else{
+      setPixel(x,y,makeColor(127,127,127));
+    }
+  }
+  matrix.show();
+}
 
-void drawVisualization(bool screen){
-        switch(visualizationMode){
-        case VIS_TIME:
-          visualizeTime(screen);
-          break;
-        case VIS_ROLL:
-          visualizeRoll(screen);
-          break;
-        case VIS_PEAK:
-          visualizePeakHold(screen);
-          break;
+void collectFFT(){
+    //Serial.println("got new FFT");
+    for(int i=7;i>=1;i--){
+      for(int j=0;j<=7;j++){
+        level[i][j]=level[i-1][j];
       }
+    }
+    level[0][0] = level[0][0]/2 + myFFT.read(0,  1)/2;
+    level[0][1] = level[0][1]/2 + myFFT.read(2,  6)/2;
+    level[0][2] = level[0][2]/2 + myFFT.read(7,  15)/2;
+    level[0][3] = level[0][3]/2 + myFFT.read(16, 32)/2;
+    level[0][4] = level[0][4]/2 + myFFT.read(33, 66)/2;
+    level[0][5] = level[0][5]/2 + myFFT.read(67, 131)/2;
+    level[0][6] = level[0][6]/2 + myFFT.read(132,257)/2;
+    level[0][7] = level[0][0]/2 + myFFT.read(258,511)/2;
+}
+
+void computeBars(){
+  for(uint16_t y=0;y<=7;y++){
+  static uint8_t decayTime;
+    if(decayVal==0){
+      bar[y]=level[0][y]*8;
+    }else{
+      if(level[0][y]*8>=bar[y]){
+        bar[y]=level[0][y]*8;
+        decayTime=0;
+      }else{
+        bar[y]=level[0][y]*8*pow(e,(-decayVal*decayTime));
+        #ifdef DEBUG
+          Serial.printf("decayTime: %i\n", decayTime);
+        #endif
+      }
+    }
+  }
+}
+
+void drawVisualization(int screen){
+  switch(visualizationMode){
+  case VIS_FREQ:
+    visualizeFreq(screen,false);
+    break;
+  case VIS_FREQ_PEAK:
+    visualizeFreq(screen,true);
+  case VIS_ROLL:
+    if(screen=DISP_OLED){
+      visualizeFreq(screen,false); //monochrome OLED can't do rolling color
+    }else{
+      visualizeRoll(screen);
+    }
+    break;
+  }
 }
 bool buttonPressed(uint8_t pin){
   //Serial.print("Menu Button has been ");
@@ -244,45 +304,47 @@ void printMenuItem(uint8_t line,char* menu[], uint8_t item){
   display.fillRect(0,line*8,128,10,0);
   display.printf("%i %s",item,menu[item]);
 }
-void visualizeTime(bool screen){
+void visualizeFreq(int disp,bool peak){
   /* ------------------------------------------------------------------  
    * levels[x][y] contain the last eight fft results
    * this should mainly draw levels[0][y], but use some falloff damping.
    * I will try to do that by applying 1/(2*x)*levels[x][y] first
    * ------------------------------------------------------------------ */  
 
-  uint8_t bar[8];
-  // Serial.println("visualizeTime()");
-  for(uint16_t y=0;y<=7;y++){
-    // 1+1/2+1/4+1/8+...+1/n =2, hence multiplying the whole bunch with 4 gets us to the max value of 8
-    bar[y]=(level[0][y]+(1/2)*level[1][y]+(1/4)*level[2][y]+(1/8)*level[3][y]+(1/16)*level[4][y]+(1/32)*level[5][y]+(1/64)*level[6][y]+(1/128)*level[7][y])*6;
-  }
-  display.fillScreen(0);
-  for(uint16_t x=0;x<=7;x++){
-    for(uint16_t y=0;y<=7;y++){
-      if(y+1>bar[x]){
-        // Serial.println();
-        setPixel(x,y,0);
-      }else if(y+1<6){
-        // Serial.print("o");
-        setPixel(x,y,makeColor(0,255,0));
-      }else if(y+1<8){
-        // Serial.print("#");
-        setPixel(x,y,makeColor(255,255,0));
-      }else{
-        // Serial.print("+");
-        setPixel(x,y,makeColor(255,0,0));
+  // Serial.println("visualizeFreq()");
+  computeBars();
+
+  if(disp==DISP_ARRAY){
+    display.fillScreen(0);
+    for(uint16_t x=0;x<=7;x++){
+      for(uint16_t y=0;y<=7;y++){
+        if(y+1>bar[x]){
+          // Serial.println();
+          setPixel(x,y,0);
+        }else if(y+1<6){
+          // Serial.print("o");
+          setPixel(x,y,makeColor(0,255,0));
+        }else if(y+1<8){
+          // Serial.print("#");
+          setPixel(x,y,makeColor(255,255,0));
+        }else{
+          // Serial.print("+");
+          setPixel(x,y,makeColor(255,0,0));
+        }
       }
     }
-    if(screen){
+    matrix.show();
+  }else if(disp==DISP_OLED){
+    for(uint16_t x=0;x<=7;x++){
       display.fillRect(x*16,32-(bar[x]*4),16,bar[x]*4,WHITE);
       display.drawRect(x*16,32-(bar[x]*4),16,bar[x]*4,0);
-      //Serial.printf("x: %i, y: %i, w: %i, h: %i\n",x*16,64-(bar[x]*8),16,bar[x]*8);
-     //Serial.println("==============");
+      #ifdef DEBUG
+        Serial.printf("x: %i, y: %i, w: %i, h: %i\n",x*16,64-(bar[x]*8),16,bar[x]*8);
+        Serial.println("==============");
+      #endif
     }
+    display.display();
   }
-  matrix.show();
-  if(screen) display.display();
 }
 
 void visualizeRoll(bool screen){
