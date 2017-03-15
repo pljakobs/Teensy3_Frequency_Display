@@ -108,8 +108,6 @@ const float e=2.718281828;
 float decayVal=0.01;
 
 void setup(){
-  //pinMode(ePin1,INPUT_PULLUP);
-  //pinMode(ePin2,INPUT_PULLUP);
   Serial.begin(115200);
   #ifdef DEBUG
     Serial.println("Starting setup");
@@ -154,11 +152,16 @@ void loop() {
     collectFFT();
     barsValid=false;
   }
+  
   if(timeSinceLastFrame>waitTime){
+    #ifdef DEBUG
+      Serial.printf("wait Time: %ims\n", waitTime);
+    #endif
     drawVisualization(DISP_ARRAY);
     if(inState==0) drawVisualization(DISP_OLED);
     timeSinceLastFrame=0;
   }
+  
   if(buttonPressed(bPin)){
     switch(inState){
       case 0x00: //not in menu
@@ -177,6 +180,7 @@ void loop() {
         break;
       case IN_MENU:
         ms.select();
+        displayMenu();
         break; //this is being handled by the menu functions themselves
     }
   }     
