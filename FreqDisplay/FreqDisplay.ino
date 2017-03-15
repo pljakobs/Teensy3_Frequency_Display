@@ -22,8 +22,6 @@
 #include <Audio.h>
 #include <Wire.h>
 #include <SPI.h>
-//#include <SD.h>
-//#include <SerialFlash.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
@@ -88,14 +86,19 @@ float level[8][8];
 // array holding the bar hights
 uint8_t bar[8];
 
-uint16_t   visualizationMode;
+struct configStruct{
+  uint16_t  visualizationMode;
+  uint8_t   bright=20;
+  uint8_t   waitTime=40;
+};
+
+configStruct myConfig;
 
 elapsedMillis timeSinceLastFrame;
 
 uint8_t menuItem,menuButton;
-uint8_t bright=20;
-uint8_t waitTime=40;
-bool pressed,inMenu,barsValid;
+
+bool inMenu,barsValid;
 long oldPosition,Position;
 
 #define IN_MENU 0x80
@@ -118,7 +121,7 @@ void setup(){
   myFFT.windowFunction(AudioWindowHanning1024);
 
   matrix.begin();
-  matrix.setBrightness(bright);
+  matrix.setBrightness(myConfig.bright);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.fillScreen(0);
@@ -139,7 +142,7 @@ void setup(){
     matrix.show();
     delay(10);
   }
-  visualizationMode=VIS_FREQ;
+  myConfig.visualizationMode=VIS_FREQ;
   buildMenu();
 }
 
@@ -148,15 +151,15 @@ void loop() {
   uint32_t color;
   uint16_t r,g,b;
 
-  if (myFFT.available()){
-    collectFFT();
-    barsValid=false;
-  }
   
-  if(timeSinceLastFrame>waitTime){
+  if(timeSinceLastFrame>myConfig.waitTime){
     #ifdef DEBUG
-      Serial.printf("wait Time: %ims\n", waitTime);
+      Serial.printf("wait Time: %ims\n", myConfig.waitTime);
     #endif
+    if (myFFT.available()){
+      collectFFT();
+      barsValid=false;
+    }
     drawVisualization(DISP_ARRAY);
     if(inState==0) drawVisualization(DISP_OLED);
     timeSinceLastFrame=0;
@@ -261,7 +264,7 @@ void computeBars(){
 }
 
 void drawVisualization(int screen){
-  switch(visualizationMode){
+  switch(myConfig.visualizationMode){
     case VIS_FREQ:
       visualizeFreq(screen,false);
       break;

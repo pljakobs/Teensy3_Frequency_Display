@@ -43,17 +43,17 @@ void onExit(MenuItem* p_menu_item) {
 }
 
 void selectFreqGraph(MenuItem* p_menu_item){
-  visualizationMode=VIS_FREQ;
+  myConfig.visualizationMode=VIS_FREQ;
   ms.back();
   displayMenu();
 }
 
 void selectPeakGraph(MenuItem* p_menu_item){
-  visualizationMode=VIS_FREQ_PEAK;
+  myConfig.visualizationMode=VIS_FREQ_PEAK;
 }
 
 void selectRollGraph(MenuItem* p_menu_item){
-  visualizationMode=VIS_ROLL;
+  myConfig.visualizationMode=VIS_ROLL;
 }
 
 void setLEDBrightness(MenuItem* p_menu_item){
@@ -63,19 +63,19 @@ void setLEDBrightness(MenuItem* p_menu_item){
 
 void adjustBrightness(){
   if(Position>oldPosition){
-    bright<250?bright+=5:bright=255;
-    matrix.setBrightness(bright);
+    myConfig.bright<250?myConfig.bright+=5:myConfig.bright=255;
+    matrix.setBrightness(myConfig.bright);
     drawVisualization(false);
     oldPosition=Position;
   } else if(Position<oldPosition){
-    bright>5?bright-=5:bright=0;
-    matrix.setBrightness(bright);
+    myConfig.bright>5?myConfig.bright-=5:myConfig.bright=0;
+    matrix.setBrightness(myConfig.bright);
     drawVisualization(false);
     oldPosition=Position;
   }
   display.setCursor(0,16);
   display.fillRect(70,16,20,8,0);
-  display.printf("Brightness: %i",bright);          
+  display.printf("Brightness: %i",myConfig.bright);          
   display.display();  
 }
 
@@ -86,20 +86,21 @@ void setDelayTime(MenuItem* p_menu_item){
 
 void adjustDelay(){
   if(Position>oldPosition){
-    waitTime<400?waitTime+=5:waitTime=400;
+    myConfig.waitTime<400?myConfig.waitTime+=5:myConfig.waitTime=400;
     oldPosition=Position;
   } else if(Position<oldPosition){
-    waitTime>5?waitTime-=5:waitTime=0;
+    myConfig.waitTime>5?myConfig.waitTime-=5:myConfig.waitTime=0;
     oldPosition=Position;
   }
   display.setCursor(0,16);
   display.fillRect(70,16,20,8,0);
-  display.printf("Delay Time: %ims",waitTime);          
+  display.printf("Delay Time: %ims",myConfig.waitTime);          
   display.display();  
 }
 
 bool buttonPressed(uint8_t pin){
   //Serial.print("Menu Button has been ");
+  static bool pressed;
   if(digitalRead(pin)){
       if (pressed){
         Serial.println("released ");
