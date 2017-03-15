@@ -10,6 +10,7 @@
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
 #include <Encoder.h>
+#include <MenuSystem.h>
 
 #define MatrixPin 2
 
@@ -19,7 +20,27 @@
 #define bPin  17
 #define OLED_RESET 13
 
-#define DEBUG
+#define VIS_FREQ      0
+#define VIS_FREQ_PEAK 1
+#define VIS_ROLL      2
+
+#define DISP_ARRAY 1
+#define DISP_OLED  2
+
+//#define DEBUG
+
+MenuSystem ms;
+Menu mainMenu("Menu");
+MenuItem mainMenu_1("exit");
+Menu visMenu("Visualization");
+MenuItem visMenu_1("Frequency Graph");
+MenuItem visMenu_2("Frequency Peak Hold");
+MenuItem visMenu_3("Roll");
+MenuItem visMenu_4("exit");
+Menu confMenu("Config");
+MenuItem confMenu_1("LED Brightness");
+MenuItem confMenu_2("Wait Time");
+MenuItem confMenu_3("exit");
 
 Adafruit_SSD1306 display(OLED_RESET);
 Encoder myEncoder(ePin1, ePin2);
@@ -29,14 +50,6 @@ AudioInputAnalog         audioInput;     //xy=140,189
 AudioAnalyzeFFT1024      myFFT;          //xy=382,189
 AudioConnection          patchCord1(audioInput, myFFT);
 // GUItool: end automatically generated code
-
-#define VIS_ITEMS     3
-#define VIS_FREQ      0
-#define VIS_FREQ_PEAK 1
-#define VIS_ROLL      2
-
-#define DISP_ARRAY 1
-#define DISP_OLED  2
 
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, 1, 1, MatrixPin,
   NEO_TILE_TOP   + NEO_TILE_LEFT   + NEO_TILE_ROWS   + NEO_TILE_PROGRESSIVE +
@@ -53,29 +66,25 @@ float scale = 60.0;
 
 // array to hold the frequency bands
 float level[8][8];
+
 // array holding the bar hights
 uint8_t bar[8];
-
-// This array holds the on-screen levels.  When the signal drops quickly,
-// these are used to lower the on-screen level 1 bar per update, which
-// looks more pleasing to corresponds to human sound perception.
-// uint32_t   pixel[8][8];
 
 uint16_t   visualizationMode;
 
 elapsedMillis timeSinceLastFrame;
 
-char* mainMenu[]={"Visualization","Brightness","Switch Off","Exit"};
-uint8_t mainItems=4;
-char* visMenu[VIS_ITEMS];
-
-//char* visMenu[] ={"Freq graph","Peak hold","Rolling"};
-//uint8_t visItems=3;
 uint8_t menuItem,menuButton;
 uint8_t bright=20;
 uint8_t waitTime=40;
 bool pressed,inMenu,barsValid;
 long oldPosition,Position;
+
+#define IN_MENU 0x80
+#define IN_BRI  0x01
+#define IN_DEL  0x02
+
+uint8_t inState;
 
 const float e=2.718281828;
 float decayVal=0.01;
@@ -88,9 +97,7 @@ void setup(){
     Serial.println("Starting setup");
   #endif
   pinMode(bPin,INPUT_PULLUP);
-  visMenu[VIS_FREQ]="Freq graph";
-  visMenu[VIS_FREQ_PEAK]="Peak Hold";
-  visMenu[VIS_ROLL]="Rolling";
+
   AudioMemory(12);
   myFFT.windowFunction(AudioWindowHanning1024);
 
@@ -117,109 +124,67 @@ void setup(){
     delay(10);
   }
   visualizationMode=VIS_FREQ;
+  buildMenu();
 }
 
 void loop() {
 
-  //float n;
-  //int i;
   uint32_t color;
   uint16_t r,g,b;
 
-  if(!digitalRead(bPin)) menuButton=true;
   if (myFFT.available()){
     collectFFT();
     barsValid=false;
-   }
-   if(timeSinceLastFrame>waitTime){
-      drawVisualization(DISP_ARRAY);
-      if(!inMenu) drawVisualization(DISP_OLED);
-      timeSinceLastFrame=0;
-  }else if(buttonPressed(bPin)) {
-    /* 
-     *  Menu!
-     */
-    display.fillScreen(0);
-    display.setTextColor(WHITE);
-    display.setCursor(0,0);
-    display.print("--Menu--");
-    
-    menuItem=0;
-    Serial.println(mainMenu[menuItem]);
-    printMenuItem(1,mainMenu,menuItem);
-    display.display();
-    while(!buttonPressed(bPin)){
-      Position=myEncoder.read();
-      delay(10);
-      if(Position>oldPosition+ROT_OFFS){
-        menuItem==mainItems-1?mainItems:menuItem++;
-        printMenuItem(1,mainMenu,menuItem);
-        Serial.println(mainMenu[menuItem]);
-        oldPosition=Position;
-        display.display();
-      }else if(Position < oldPosition-ROT_OFFS){
-        menuItem==0?0:menuItem--;
-        printMenuItem(1,mainMenu,menuItem);
-        Serial.println(mainMenu[menuItem]);
-        oldPosition=Position;
-        display.display();
-      }
-    }
-    //Serial.printf("selected menu item %i-%s",menuItem,mainMenu[menuItem]);
-    switch(menuItem){
-      case 0:
-        printMenuItem(2,visMenu,visualizationMode);
-        display.display();
-        while(!buttonPressed(bPin)){
-          Position=myEncoder.read();  
-          if(Position>oldPosition+ROT_OFFS){
-            visualizationMode==VIS_ITEMS-1?VIS_ITEMS:visualizationMode++;
-            printMenuItem(2,visMenu,visualizationMode);
-            display.display();
-            oldPosition=Position;
-          }else if(Position < oldPosition-ROT_OFFS){
-            visualizationMode==0?0:visualizationMode--;
-            printMenuItem(2,visMenu,visualizationMode);
-            display.display();
-            oldPosition=Position;
-          }
-        }
-        display.fillScreen(0);
-        display.display();
-        break;
-      case 1:
-        while(digitalRead(bPin)){
-
-          Position=myEncoder.read();  
-          if(Position>oldPosition){
-            bright<250?bright+=5:bright=255;
-            matrix.setBrightness(bright);
-            drawVisualization(false);
-            oldPosition=Position;
-          } else if(Position<oldPosition){
-            bright>5?bright-=5:bright=0;
-            matrix.setBrightness(bright);
-            drawVisualization(false);
-            oldPosition=Position;
-          }
-          display.setCursor(0,16);
-          display.fillRect(70,16,20,8,0);
-          display.printf("Brightness: %i",bright);          
-          display.display();  
-        }
-        display.fillScreen(0);
-        display.display();
-        break;
-      case 2:
-        display.fillScreen(0);
-        display.display();
-        break;
-      case 3:
-        display.fillScreen(0);
-        display.display();
-        break;
-    }
   }
+  if(timeSinceLastFrame>waitTime){
+    drawVisualization(DISP_ARRAY);
+    if(inState==0) drawVisualization(DISP_OLED);
+    timeSinceLastFrame=0;
+  }
+  if(buttonPressed(bPin)){
+    switch(inState){
+      case 0x00: //not in menu
+        inState |=IN_MENU; //enter menu
+        displayMenu();
+        break;
+      case (IN_MENU|IN_BRI):
+        inState &= ~IN_BRI; //reset brightness flag
+        ms.back();
+        displayMenu();
+        break;
+      case (IN_MENU|IN_DEL):
+        inState &= ~IN_DEL; //reset delay flag
+        ms.back();
+        displayMenu();
+        break;
+      case IN_MENU:
+        ms.select();
+        break; //this is being handled by the menu functions themselves
+    }
+  }     
+  
+  Position=myEncoder.read();
+  switch(inState){
+    case 0x00: //not in menu
+      break;   //do nothing
+    case IN_MENU:
+      if(Position>oldPosition+ROT_OFFS){
+        oldPosition=Position;
+        ms.next();
+        displayMenu();
+      }else if(Position<oldPosition-ROT_OFFS){
+        oldPosition=Position;
+        ms.prev();
+        displayMenu();
+      }
+      break;
+    case (IN_MENU|IN_BRI):
+      adjustBrightness();
+      break;
+    case (IN_MENU|IN_DEL):
+      adjustDelay();
+      break;
+  }     
 }
 void showProgress(int p){
   p/=4;
@@ -290,28 +255,7 @@ void drawVisualization(int screen){
       break;
   }
 }
-bool buttonPressed(uint8_t pin){
-  //Serial.print("Menu Button has been ");
-  if(digitalRead(pin)){
-      if (pressed){
-        Serial.println("released ");
-        pressed=false;
-        return true;
-      }else{
-        //Serial.println("untouched ");
-        return false;
-      }
-  }else{
-    pressed=true;
-    Serial.println("pressed ");
-    return false;
-  }
-}
-void printMenuItem(uint8_t line,char* menu[], uint8_t item){
-  display.setCursor(0,line*8);
-  display.fillRect(0,line*8,128,10,0);
-  display.printf("%i %s",item,menu[item]);
-}
+
 void visualizeFreq(int disp,bool peak){
   /* ------------------------------------------------------------------  
    * levels[x][y] contain the last eight fft results
