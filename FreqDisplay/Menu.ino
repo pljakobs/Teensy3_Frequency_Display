@@ -11,7 +11,7 @@ void buildMenu(){
   mainMenu.add_menu(&confMenu);
     confMenu.add_item(&confMenu_1,&setLEDBrightness);
     confMenu.add_item(&confMenu_2,&setDelayTime);
-    confMenu.add_item(&confMenu_3,&onBack);
+    confMenu.add_item(&confMenu_3,&onExitConfig);
   mainMenu.add_item(&mainMenu_1,&onExit);
   ms.set_root_menu(&mainMenu);
 }
@@ -32,6 +32,7 @@ void onBack(MenuItem* p_menu_item) {
     Serial.print("onBack");
   #endif
   ms.back();
+  displayMenu();
 }
 
 void onExit(MenuItem* p_menu_item) {
@@ -42,6 +43,12 @@ void onExit(MenuItem* p_menu_item) {
   ms.back();
 }
 
+void onExitConfig(MenuItem* p_menu_item){
+  Serial.println("onExitConfig");
+  saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
+  ms.back();
+  displayMenu();
+}
 void selectFreqGraph(MenuItem* p_menu_item){
   myConfig.visualizationMode=VIS_FREQ;
   ms.back();
@@ -99,20 +106,16 @@ void adjustDelay(){
 }
 
 bool buttonPressed(uint8_t pin){
-  //Serial.print("Menu Button has been ");
   static bool pressed;
   if(digitalRead(pin)){
       if (pressed){
-        Serial.println("released ");
         pressed=false;
         return true;
       }else{
-        //Serial.println("untouched ");
         return false;
       }
   }else{
     pressed=true;
-    Serial.println("pressed ");
     return false;
   }
 }

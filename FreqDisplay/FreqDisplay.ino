@@ -27,6 +27,8 @@
 #include <Adafruit_NeoPixel.h>
 #include <Encoder.h>
 #include <MenuSystem.h>
+#include "ConfigFile.h"
+#include <EEPROM.h>
 
 #define MatrixPin 2
 
@@ -86,11 +88,6 @@ float level[8][8];
 // array holding the bar hights
 uint8_t bar[8];
 
-struct configStruct{
-  uint16_t  visualizationMode;
-  uint8_t   bright=20;
-  uint8_t   waitTime=40;
-};
 
 configStruct myConfig;
 
@@ -120,7 +117,16 @@ void setup(){
   AudioMemory(12);
   myFFT.windowFunction(AudioWindowHanning1024);
 
+  myConfig.configVersion=CONFIG_VERSION;
+  loadConfig((uint8_t*)&myConfig,sizeof(configStruct));
+  
   matrix.begin();
+  if(!loadConfig((uint8_t*)&myConfig,sizeof(configStruct))){
+    myConfig.visualizationMode=VIS_FREQ;
+    myConfig.bright=20;
+    myConfig.waitTime=25;
+  }
+  Serial.printf("config: \nvisualizationMode: %i\nbrightness: %i\nwait Time: %i\n", myConfig.visualizationMode,myConfig.bright,myConfig.waitTime);
   matrix.setBrightness(myConfig.bright);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
@@ -142,7 +148,7 @@ void setup(){
     matrix.show();
     delay(10);
   }
-  myConfig.visualizationMode=VIS_FREQ;
+  
   buildMenu();
 }
 
