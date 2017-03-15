@@ -1,11 +1,29 @@
+/*
+ * This is a simple audio visualization project.
+ * it is based on the teensy audio library and requires a teensy 3.x to run
+ * The configuration is:
+ * -> (currently) 8x8 Adafruit NeoPixel array (or other WS2812B) attached to MatrixPin (here: 2)
+ * -> a 128x32 I2C OLED display (well, that's the current config, you may be able to use a larger one), attached to hardware i2c
+ * -> a rotary encoder attached to Pins ePin1 and ePin2 (here: 14 & 15) plus it's push function on bPin (here: 17)
+ * 
+ * you will need to install additional libraries:
+ * 
+ * -> Adafruit GFX
+ * -> Adafruit NeoMatrix
+ * -> Adafruit NeoPixel
+ * -> Encoder
+ * -> Audio
+ * -> MenuSystem
+ */
+
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_SSD1306.h>
 #include <Audio.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <SD.h>
-#include <SerialFlash.h>
+//#include <SD.h>
+//#include <SerialFlash.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
