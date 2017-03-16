@@ -113,19 +113,22 @@ void setup(){
     Serial.println("Starting setup");
   #endif
   pinMode(bPin,INPUT_PULLUP);
-
+  showProgress(25);
   AudioMemory(12);
+  dumpConfig(CONFIG_START, sizeof(configStruct));
   myFFT.windowFunction(AudioWindowHanning1024);
-
+  showProgress(35);
   myConfig.configVersion=CONFIG_VERSION;
-  loadConfig((uint8_t*)&myConfig,sizeof(configStruct));
-  
+  //loadConfig((uint8_t*)&myConfig,sizeof(configStruct));
+  showProgress(50);
   matrix.begin();
+  showProgress(55);
   if(!loadConfig((uint8_t*)&myConfig,sizeof(configStruct))){
     myConfig.visualizationMode=VIS_FREQ;
     myConfig.bright=20;
     myConfig.waitTime=25;
   }
+  showProgress(75);
   Serial.printf("config: \nvisualizationMode: %i\nbrightness: %i\nwait Time: %i\n", myConfig.visualizationMode,myConfig.bright,myConfig.waitTime);
   matrix.setBrightness(myConfig.bright);
 
@@ -134,7 +137,7 @@ void setup(){
   display.setTextColor(WHITE);
   display.print("Frequency Analyzer");
   display.display();
-  
+  showProgress(100);
   matrix.fillScreen(matrix.Color(255,0,0));
   matrix.show();
   #ifdef DEBUG
@@ -170,52 +173,7 @@ void loop() {
     if(inState==0) drawVisualization(DISP_OLED);
     timeSinceLastFrame=0;
   }
-  
-  if(buttonPressed(bPin)){
-    switch(inState){
-      case 0x00: //not in menu
-        inState |=IN_MENU; //enter menu
-        displayMenu();
-        break;
-      case (IN_MENU|IN_BRI):
-        inState &= ~IN_BRI; //reset brightness flag
-        ms.back();
-        displayMenu();
-        break;
-      case (IN_MENU|IN_DEL):
-        inState &= ~IN_DEL; //reset delay flag
-        ms.back();
-        displayMenu();
-        break;
-      case IN_MENU:
-        ms.select();
-        displayMenu();
-        break; //this is being handled by the menu functions themselves
-    }
-  }     
-  
-  Position=myEncoder.read();
-  switch(inState){
-    case 0x00: //not in menu
-      break;   //do nothing
-    case IN_MENU:
-      if(Position>oldPosition+ROT_OFFS){
-        oldPosition=Position;
-        ms.next();
-        displayMenu();
-      }else if(Position<oldPosition-ROT_OFFS){
-        oldPosition=Position;
-        ms.prev();
-        displayMenu();
-      }
-      break;
-    case (IN_MENU|IN_BRI):
-      adjustBrightness();
-      break;
-    case (IN_MENU|IN_DEL):
-      adjustDelay();
-      break;
-  }     
+  handleControls();
 }
 void showProgress(int p){
   p/=4;

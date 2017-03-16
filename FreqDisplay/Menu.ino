@@ -16,6 +16,55 @@ void buildMenu(){
   ms.set_root_menu(&mainMenu);
 }
 
+void handleControls(){
+    if(buttonPressed(bPin)){
+    switch(inState){
+      case 0x00: //not in menu
+        inState |=IN_MENU; //enter menu
+        displayMenu();
+        break;
+      case (IN_MENU|IN_BRI):
+        saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
+        inState &= ~IN_BRI; //reset brightness flag
+        //ms.back();
+        displayMenu();
+        break;
+      case (IN_MENU|IN_DEL):
+        saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
+        inState &= ~IN_DEL; //reset delay flag
+        //ms.back();
+        displayMenu();
+        break;
+      case IN_MENU:
+        ms.select();
+        displayMenu();
+        break; //this is being handled by the menu functions themselves
+    }
+  }     
+  
+  Position=myEncoder.read();
+  switch(inState){
+    case 0x00: //not in menu
+      break;   //do nothing
+    case IN_MENU:
+      if(Position>oldPosition+ROT_OFFS){
+        oldPosition=Position;
+        ms.next();
+        displayMenu();
+      }else if(Position<oldPosition-ROT_OFFS){
+        oldPosition=Position;
+        ms.prev();
+        displayMenu();
+      }
+      break;
+    case (IN_MENU|IN_BRI):
+      adjustBrightness();
+      break;
+    case (IN_MENU|IN_DEL):
+      adjustDelay();
+      break;
+  }     
+}
 void displayMenu() {
   display.fillScreen(0);
   display.setCursor(0,0);
@@ -49,18 +98,26 @@ void onExitConfig(MenuItem* p_menu_item){
   ms.back();
   displayMenu();
 }
+
 void selectFreqGraph(MenuItem* p_menu_item){
   myConfig.visualizationMode=VIS_FREQ;
+  saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
   ms.back();
   displayMenu();
 }
 
 void selectPeakGraph(MenuItem* p_menu_item){
   myConfig.visualizationMode=VIS_FREQ_PEAK;
+  saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
+  ms.back();
+  displayMenu();
 }
 
 void selectRollGraph(MenuItem* p_menu_item){
   myConfig.visualizationMode=VIS_ROLL;
+  saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
+  ms.back();
+  displayMenu();
 }
 
 void setLEDBrightness(MenuItem* p_menu_item){
