@@ -107,7 +107,8 @@ long oldPosition,Position;
 uint8_t inState;
 
 const float e=2.718281828;
-float decayVal=0.01;
+float decayVal=0.0001;
+float peakDecayVal=0.000001;
 
 void setup(){
   Serial.begin(115200);
@@ -164,7 +165,6 @@ void loop() {
   uint32_t color;
   uint16_t r,g,b;
 
-  
   if(timeSinceLastFrame>myConfig.waitTime){
     #ifdef DEBUG
       Serial.printf("wait Time: %ims\n", myConfig.waitTime);
@@ -255,15 +255,22 @@ void visualizeFreq(int disp,bool peak){
    * this should mainly draw levels[0][y], but use some falloff damping.
    * I will try to do that by applying 1/(2*x)*levels[x][y] first
    * ------------------------------------------------------------------ */  
-
+  
   // Serial.println("visualizeFreq()");
   #ifdef DEBUG
     Serial.printf("entered visualizeFreq with disp=%i and peak=%b",disp,peak);
   #endif
   if(!barsValid) computeBars();
 
+  static uint8_t peakVal[8];
+  
   if(disp==DISP_ARRAY){
     for(uint16_t x=0;x<=7;x++){
+      if(peak){
+        if(bar[x]>peakVal[x]){
+          peakVal[x]=bar[x];
+        }
+      }
       for(uint16_t y=0;y<=7;y++){
         if(y+1>bar[x]){
           // Serial.println();
@@ -278,6 +285,11 @@ void visualizeFreq(int disp,bool peak){
           // Serial.print("+");
           setPixel(x,y,makeColor(255,0,0));
         }
+      }
+      if(peak){
+        setPixel(x,(uint16_t)peakVal[x],makeColor(0,0,64));
+        //peakVal[x]=peakVal[x]*pow(e,-peakDecayVal);
+        peakVal[x]=peakVal[x]*0.99999;
       }
     }
     matrix.show();

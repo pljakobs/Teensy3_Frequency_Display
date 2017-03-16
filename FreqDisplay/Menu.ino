@@ -182,8 +182,8 @@ void adjustRotation(){
     myConfig.rotation<3?myConfig.rotation++:myConfig.rotation=0;
     matrix.setRotation(myConfig.rotation);
     oldPosition=Position;
-  } else if(Position<oldPosition){
-    myConfig.rotation>=0?myConfig.rotation--:myConfig.rotation=3;
+  } else if(Position<oldPosition-ROT_OFFS){
+    myConfig.rotation>0?myConfig.rotation--:myConfig.rotation=3;
     matrix.setRotation(myConfig.rotation);
     oldPosition=Position;
   }
