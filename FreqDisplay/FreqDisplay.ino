@@ -58,7 +58,8 @@ MenuItem visMenu_4("exit");
 Menu confMenu("Config");
 MenuItem confMenu_1("LED Brightness");
 MenuItem confMenu_2("Wait Time");
-MenuItem confMenu_3("exit");
+MenuItem confMenu_3("Rotation");
+MenuItem confMenu_4("exit");
 
 Adafruit_SSD1306 display(OLED_RESET);
 Encoder myEncoder(ePin1, ePin2);
@@ -101,6 +102,7 @@ long oldPosition,Position;
 #define IN_MENU 0x80
 #define IN_BRI  0x01
 #define IN_DEL  0x02
+#define IN_ROT  0x04
 
 uint8_t inState;
 
@@ -127,7 +129,9 @@ void setup(){
     myConfig.visualizationMode=VIS_FREQ;
     myConfig.bright=20;
     myConfig.waitTime=25;
+    myConfig.rotation=0;
   }
+  matrix.setRotation(myConfig.rotation);
   showProgress(75);
   Serial.printf("config: \nvisualizationMode: %i\nbrightness: %i\nwait Time: %i\n", myConfig.visualizationMode,myConfig.bright,myConfig.waitTime);
   matrix.setBrightness(myConfig.bright);

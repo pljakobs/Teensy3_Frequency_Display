@@ -11,7 +11,8 @@ void buildMenu(){
   mainMenu.add_menu(&confMenu);
     confMenu.add_item(&confMenu_1,&setLEDBrightness);
     confMenu.add_item(&confMenu_2,&setDelayTime);
-    confMenu.add_item(&confMenu_3,&onExitConfig);
+    confMenu.add_item(&confMenu_3,&setRotation);
+    confMenu.add_item(&confMenu_4,&onExitConfig);
   mainMenu.add_item(&mainMenu_1,&onExit);
   ms.set_root_menu(&mainMenu);
 }
@@ -32,6 +33,12 @@ void handleControls(){
       case (IN_MENU|IN_DEL):
         saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
         inState &= ~IN_DEL; //reset delay flag
+        //ms.back();
+        displayMenu();
+        break;
+      case (IN_MENU|IN_ROT):
+        saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
+        inState &= ~IN_ROT; //reset delay flag
         //ms.back();
         displayMenu();
         break;
@@ -62,6 +69,9 @@ void handleControls(){
       break;
     case (IN_MENU|IN_DEL):
       adjustDelay();
+      break;
+    case (IN_MENU|IN_ROT):
+      adjustRotation();
       break;
   }     
 }
@@ -159,6 +169,27 @@ void adjustDelay(){
   display.setCursor(0,16);
   display.fillRect(70,16,20,8,0);
   display.printf("Delay Time: %ims",myConfig.waitTime);          
+  display.display();  
+}
+
+void setRotation(MenuItem* p_menu_item){
+  displayMenu();
+  inState |= IN_ROT;
+}
+
+void adjustRotation(){
+  if(Position>oldPosition+ROT_OFFS){
+    myConfig.rotation<3?myConfig.rotation++:myConfig.rotation=0;
+    matrix.setRotation(myConfig.rotation);
+    oldPosition=Position;
+  } else if(Position<oldPosition){
+    myConfig.rotation>=0?myConfig.rotation--:myConfig.rotation=3;
+    matrix.setRotation(myConfig.rotation);
+    oldPosition=Position;
+  }
+  display.setCursor(0,16);
+  display.fillRect(50,16,20,8,0);
+  display.printf("Rotation: %i",myConfig.rotation);          
   display.display();  
 }
 
