@@ -22,13 +22,13 @@
 #include <Audio.h>
 #include <Wire.h>
 #include <SPI.h>
-//#include <SD.h>
-//#include <SerialFlash.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
 #include <Encoder.h>
 #include <MenuSystem.h>
+#include "ConfigFile.h"
+#include <EEPROM.h>
 
 #define MatrixPin 2
 
@@ -58,7 +58,8 @@ MenuItem visMenu_4("exit");
 Menu confMenu("Config");
 MenuItem confMenu_1("LED Brightness");
 MenuItem confMenu_2("Wait Time");
-MenuItem confMenu_3("exit");
+MenuItem confMenu_3("Rotation");
+MenuItem confMenu_4("exit");
 
 Adafruit_SSD1306 display(OLED_RESET);
 Encoder myEncoder(ePin1, ePin2);
@@ -88,24 +89,26 @@ float level[8][8];
 // array holding the bar hights
 uint8_t bar[8];
 
-uint16_t   visualizationMode;
+
+configStruct myConfig;
 
 elapsedMillis timeSinceLastFrame;
 
 uint8_t menuItem,menuButton;
-uint8_t bright=20;
-uint8_t waitTime=40;
-bool pressed,inMenu,barsValid;
+
+bool inMenu,barsValid;
 long oldPosition,Position;
 
 #define IN_MENU 0x80
 #define IN_BRI  0x01
 #define IN_DEL  0x02
+#define IN_ROT  0x04
 
 uint8_t inState;
 
 const float e=2.718281828;
-float decayVal=0.01;
+float decayVal=0.0001;
+float peakDecayVal=0.000001;
 
 void setup(){
   Serial.begin(115200);
@@ -113,19 +116,33 @@ void setup(){
     Serial.println("Starting setup");
   #endif
   pinMode(bPin,INPUT_PULLUP);
-
+  showProgress(25);
   AudioMemory(12);
+  dumpConfig(CONFIG_START, sizeof(configStruct));
   myFFT.windowFunction(AudioWindowHanning1024);
-
+  showProgress(35);
+  myConfig.configVersion=CONFIG_VERSION;
+  //loadConfig((uint8_t*)&myConfig,sizeof(configStruct));
+  showProgress(50);
   matrix.begin();
-  matrix.setBrightness(bright);
+  showProgress(55);
+  if(!loadConfig((uint8_t*)&myConfig,sizeof(configStruct))){
+    myConfig.visualizationMode=VIS_FREQ;
+    myConfig.bright=20;
+    myConfig.waitTime=25;
+    myConfig.rotation=0;
+  }
+  matrix.setRotation(myConfig.rotation);
+  showProgress(75);
+  Serial.printf("config: \nvisualizationMode: %i\nbrightness: %i\nwait Time: %i\n", myConfig.visualizationMode,myConfig.bright,myConfig.waitTime);
+  matrix.setBrightness(myConfig.bright);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.fillScreen(0);
   display.setTextColor(WHITE);
   display.print("Frequency Analyzer");
   display.display();
-  
+  showProgress(100);
   matrix.fillScreen(matrix.Color(255,0,0));
   matrix.show();
   #ifdef DEBUG
@@ -139,7 +156,7 @@ void setup(){
     matrix.show();
     delay(10);
   }
-  visualizationMode=VIS_FREQ;
+  
   buildMenu();
 }
 
@@ -148,65 +165,19 @@ void loop() {
   uint32_t color;
   uint16_t r,g,b;
 
-  if (myFFT.available()){
-    collectFFT();
-    barsValid=false;
-  }
-  
-  if(timeSinceLastFrame>waitTime){
+  if(timeSinceLastFrame>myConfig.waitTime){
     #ifdef DEBUG
-      Serial.printf("wait Time: %ims\n", waitTime);
+      Serial.printf("wait Time: %ims\n", myConfig.waitTime);
     #endif
+    if (myFFT.available()){
+      collectFFT();
+      barsValid=false;
+    }
     drawVisualization(DISP_ARRAY);
     if(inState==0) drawVisualization(DISP_OLED);
     timeSinceLastFrame=0;
   }
-  
-  if(buttonPressed(bPin)){
-    switch(inState){
-      case 0x00: //not in menu
-        inState |=IN_MENU; //enter menu
-        displayMenu();
-        break;
-      case (IN_MENU|IN_BRI):
-        inState &= ~IN_BRI; //reset brightness flag
-        ms.back();
-        displayMenu();
-        break;
-      case (IN_MENU|IN_DEL):
-        inState &= ~IN_DEL; //reset delay flag
-        ms.back();
-        displayMenu();
-        break;
-      case IN_MENU:
-        ms.select();
-        displayMenu();
-        break; //this is being handled by the menu functions themselves
-    }
-  }     
-  
-  Position=myEncoder.read();
-  switch(inState){
-    case 0x00: //not in menu
-      break;   //do nothing
-    case IN_MENU:
-      if(Position>oldPosition+ROT_OFFS){
-        oldPosition=Position;
-        ms.next();
-        displayMenu();
-      }else if(Position<oldPosition-ROT_OFFS){
-        oldPosition=Position;
-        ms.prev();
-        displayMenu();
-      }
-      break;
-    case (IN_MENU|IN_BRI):
-      adjustBrightness();
-      break;
-    case (IN_MENU|IN_DEL):
-      adjustDelay();
-      break;
-  }     
+  handleControls();
 }
 void showProgress(int p){
   p/=4;
@@ -261,7 +232,7 @@ void computeBars(){
 }
 
 void drawVisualization(int screen){
-  switch(visualizationMode){
+  switch(myConfig.visualizationMode){
     case VIS_FREQ:
       visualizeFreq(screen,false);
       break;
@@ -284,15 +255,22 @@ void visualizeFreq(int disp,bool peak){
    * this should mainly draw levels[0][y], but use some falloff damping.
    * I will try to do that by applying 1/(2*x)*levels[x][y] first
    * ------------------------------------------------------------------ */  
-
+  
   // Serial.println("visualizeFreq()");
   #ifdef DEBUG
     Serial.printf("entered visualizeFreq with disp=%i and peak=%b",disp,peak);
   #endif
   if(!barsValid) computeBars();
 
+  static uint8_t peakVal[8];
+  
   if(disp==DISP_ARRAY){
     for(uint16_t x=0;x<=7;x++){
+      if(peak){
+        if(bar[x]>peakVal[x]){
+          peakVal[x]=bar[x];
+        }
+      }
       for(uint16_t y=0;y<=7;y++){
         if(y+1>bar[x]){
           // Serial.println();
@@ -307,6 +285,11 @@ void visualizeFreq(int disp,bool peak){
           // Serial.print("+");
           setPixel(x,y,makeColor(255,0,0));
         }
+      }
+      if(peak){
+        setPixel(x,(uint16_t)peakVal[x],makeColor(0,0,64));
+        //peakVal[x]=peakVal[x]*pow(e,-peakDecayVal);
+        peakVal[x]=peakVal[x]*0.99999;
       }
     }
     matrix.show();
