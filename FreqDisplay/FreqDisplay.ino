@@ -41,9 +41,12 @@
 #define VIS_FREQ      0
 #define VIS_FREQ_PEAK 1
 #define VIS_ROLL      2
+#define VIS_NOTE      3
 
 #define DISP_ARRAY 1
 #define DISP_OLED  2
+
+#define BINNING_CONST 1.77833
 
 //#define DEBUG
 
@@ -54,20 +57,51 @@ Menu visMenu("Visualization");
 MenuItem visMenu_1("Frequency Graph");
 MenuItem visMenu_2("Frequency Peak Hold");
 MenuItem visMenu_3("Roll");
-MenuItem visMenu_4("exit");
+MenuItem visMenu_4("Notes");
+MenuItem visMenu_5("exit");
 Menu confMenu("Config");
 MenuItem confMenu_1("LED Brightness");
 MenuItem confMenu_2("Wait Time");
 MenuItem confMenu_3("Rotation");
 MenuItem confMenu_4("exit");
 
+#define IN_MENU 0x80
+#define IN_BRI  0x01
+#define IN_DEL  0x02
+#define IN_ROT  0x04
+
+#define MATRIX_WIDTH  8
+#define MATRIX_HEIGHT 8
+
+configStruct myConfig;
+
 Adafruit_SSD1306 display(OLED_RESET);
 Encoder myEncoder(ePin1, ePin2);
 
 // GUItool: begin automatically generated code
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+// GUItool: begin automatically generated code
+AudioInputAnalog          audioInput;      //xy=263,370
+AudioAnalyzeRMS           myRMS;           //xy=512,330
+AudioAnalyzeToneDetect    myTone;          //xy=512,340
+AudioAnalyzePeak          myPeak;          //xy=512,370
+AudioAnalyzeFFT1024       myFFT;           //xy=512,400
+AudioAnalyzeNoteFrequency myNoteFreq;      //xy=512,430
+AudioConnection           patchCord1(audioInput, myFFT);
+AudioConnection           patchCord2(audioInput, myPeak);
+AudioConnection           patchCord3(audioInput, myRMS);
+AudioConnection           patchCord4(audioInput, myTone);
+AudioConnection           patchCord5(audioInput, myNoteFreq);
+/*
 AudioInputAnalog         audioInput;     //xy=140,189
 AudioAnalyzeFFT1024      myFFT;          //xy=382,189
 AudioConnection          patchCord1(audioInput, myFFT);
+*/
 // GUItool: end automatically generated code
 
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, 1, 1, MatrixPin,
@@ -84,13 +118,10 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, 1, 1, MatrixPin,
 float scale = 60.0;
 
 // array to hold the frequency bands
-float level[8][8];
+float level[MATRIX_WIDTH][MATRIX_HEIGHT];
 
 // array holding the bar hights
-uint8_t bar[8];
-
-
-configStruct myConfig;
+uint8_t bar[MATRIX_WIDTH];
 
 elapsedMillis timeSinceLastFrame;
 
@@ -98,11 +129,6 @@ uint8_t menuItem,menuButton;
 
 bool inMenu,barsValid;
 long oldPosition,Position;
-
-#define IN_MENU 0x80
-#define IN_BRI  0x01
-#define IN_DEL  0x02
-#define IN_ROT  0x04
 
 uint8_t inState;
 
@@ -112,6 +138,8 @@ float peakDecayVal=0.000001;
 
 void setup(){
   Serial.begin(115200);
+  matrix.begin();
+  
   #ifdef DEBUG
     Serial.println("Starting setup");
   #endif
@@ -120,18 +148,18 @@ void setup(){
   AudioMemory(12);
   dumpConfig(CONFIG_START, sizeof(configStruct));
   myFFT.windowFunction(AudioWindowHanning1024);
-  showProgress(35);
+  //myNoteFreq.begin(0.5);
+  showProgress(40);
   myConfig.configVersion=CONFIG_VERSION;
-  //loadConfig((uint8_t*)&myConfig,sizeof(configStruct));
-  showProgress(50);
-  matrix.begin();
-  showProgress(55);
+  
   if(!loadConfig((uint8_t*)&myConfig,sizeof(configStruct))){
     myConfig.visualizationMode=VIS_FREQ;
     myConfig.bright=20;
     myConfig.waitTime=25;
     myConfig.rotation=0;
   }
+  showProgress(55);
+
   matrix.setRotation(myConfig.rotation);
   showProgress(75);
   Serial.printf("config: \nvisualizationMode: %i\nbrightness: %i\nwait Time: %i\n", myConfig.visualizationMode,myConfig.bright,myConfig.waitTime);
@@ -156,7 +184,6 @@ void setup(){
     matrix.show();
     delay(10);
   }
-  
   buildMenu();
 }
 
@@ -179,6 +206,7 @@ void loop() {
   }
   handleControls();
 }
+
 void showProgress(int p){
   p/=4;
   int x,y,q;
@@ -195,12 +223,21 @@ void showProgress(int p){
 }
 
 void collectFFT(){
-    //Serial.println("got new FFT");
-    for(int i=7;i>=1;i--){
-      for(int j=0;j<=7;j++){
-        level[i][j]=level[i-1][j];
+  /*
+   * 512 Bins yield a bin width of 21,53 Hz at 44kHz
+   * 
+   */
+
+    for(uint8_t y=0;y<MATRIX_HEIGHT;y++){
+      for(uint8_t x=MATRIX_WIDTH-1;x>0;x--){
+        level[x][y]=level[x-1][y];
       }
+      level[0][y]=myFFT.read((uint16_t)pow(2,16/MATRIX_HEIGHT*(float)(y-1)/BINNING_CONST),(uint16_t)pow(2,16/MATRIX_HEIGHT*(float)(y)/BINNING_CONST));
+      #ifdef DEBUG
+        Serial.printf("bin %i from %i to %i: %f\n",y,(uint16_t)pow(2,16/MATRIX_HEIGHT*(float)(y)/BINNING_CONST)+1,(uint16_t)pow(2,16/MATRIX_HEIGHT*(float)(y+1)/BINNING_CONST),level[0][y]);
+      #endif
     }
+    /*
     level[0][0] = level[0][0]/2 + myFFT.read(0,  1)/2;
     level[0][1] = level[0][1]/2 + myFFT.read(2,  6)/2;
     level[0][2] = level[0][2]/2 + myFFT.read(7,  15)/2;
@@ -209,6 +246,7 @@ void collectFFT(){
     level[0][5] = level[0][5]/2 + myFFT.read(67, 131)/2;
     level[0][6] = level[0][6]/2 + myFFT.read(132,257)/2;
     level[0][7] = level[0][0]/2 + myFFT.read(258,511)/2;
+    */
 }
 
 void computeBars(){
@@ -244,6 +282,15 @@ void drawVisualization(int screen){
         visualizeFreq(screen,false); //monochrome OLED can't do rolling color
       }else{
         visualizeRoll(screen);
+      }
+      break;
+    case VIS_NOTE:
+      if(screen==DISP_OLED){
+        visualizeFreq(screen,false); //monochrome OLED can't do rolling color
+      }else{
+        //
+        Serial.printf("calling visualizeNote\n");
+        visualizeNote(screen);
       }
       break;
   }
@@ -323,20 +370,67 @@ void visualizeRoll(int disp){
    matrix.show();
 }
 
-void visualizePeakHold(bool screen){
-  
-}
+void visualizeNote(int disp){
+  static int8_t note[MATRIX_WIDTH];  
+  matrix.fillScreen(0x0000);
+  for(uint8_t x=MATRIX_WIDTH-1;x>0;x--){
+    note[x]=note[x-1];
+    //Serial.printf("note[%i]=%02i, ",x,note[x]);      
+  }
+  //Serial.println();
+  note[0]=-1;
+  for(uint8_t y=0;y<MATRIX_HEIGHT;y++){
+    int8_t l=(int8_t)((float)MATRIX_HEIGHT*level[0][y]);
+    //Serial.printf("level[%i]=%i\n",y,l);
+    if(l>MATRIX_HEIGHT) l=MATRIX_HEIGHT;
+    if(l>note[0]) note[0]=y;
+  }
+  //Serial.printf("note[0]: %02i\n",note[0]);
+  //uint8_t c;
+  for(uint16_t x=0;x<MATRIX_WIDTH;x++){
+    if(note[x]!=0){
+      uint16_t _r=random(255);
+      uint16_t _g=random(255);
+      uint16_t _b=random(255);
+      setPixel(x,note[x],makeColor(_r,_g,_b));
+      /*
+       
+      setPixel(x-1,note[x],makeColor(_r/2,_r/2,_r/2));
+      setPixel(x-2,note[x],makeColor(_r/4,_r/4,_r/4));
+      setPixel(x-3,note[x],makeColor(_r/8,_r/8,_r/8));
+      setPixel(x-4,note[x],makeColor(0,0,0));
+      */
+    }
+  }
+  matrix.show();
+  /*
+  for(uint16_t y=MATRIX_HEIGHT;y>0;y--){
+    for(uint16_t x=0;x<MATRIX_WIDTH;x++){
+      if(note[x]==y){
+        Serial.printf("%02i ",(uint16_t)note[x]);
+      }else{
+        Serial.printf("-- ");
+      }
+    }
+    Serial.println();
+  }
+  Serial.println("==-==-==-==-==-==-==-==");
+  delay(500);
+  */
+}  
 
 uint32_t makeColor(uint16_t r, uint16_t g, uint16_t b){
-  return r<<16|g<<8|b;
+  return (r&0xff)<<16|(g&0xff)<<8|b&0xff;
 }
 
 void setPixel(uint16_t x, uint16_t y, uint32_t color){
   /* -------------------------------------------
    *  wrapper to set 32 Bit color
    * ------------------------------------------- */
+   //Serial.printf("called setPixel with x: %i, y:%i, c:%i\n",x,y,color);
   matrix.setPassThruColor(color);
   matrix.drawPixel(7-x,y,0); //just a dummy color
+  matrix.setPassThruColor();
 }
 
 uint32_t hsv2rgb(uint16_t _h, uint16_t _s, uint16_t _v){

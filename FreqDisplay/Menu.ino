@@ -7,7 +7,8 @@ void buildMenu(){
     visMenu.add_item(&visMenu_1,&selectFreqGraph);
     visMenu.add_item(&visMenu_2,&selectPeakGraph);
     visMenu.add_item(&visMenu_3,&selectRollGraph);
-    visMenu.add_item(&visMenu_4,&onBack);
+    visMenu.add_item(&visMenu_4,&selectNoteGraph);
+    visMenu.add_item(&visMenu_5,&onBack);
   mainMenu.add_menu(&confMenu);
     confMenu.add_item(&confMenu_1,&setLEDBrightness);
     confMenu.add_item(&confMenu_2,&setDelayTime);
@@ -125,6 +126,13 @@ void selectPeakGraph(MenuItem* p_menu_item){
 
 void selectRollGraph(MenuItem* p_menu_item){
   myConfig.visualizationMode=VIS_ROLL;
+  saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
+  ms.back();
+  displayMenu();
+}
+
+void selectNoteGraph(MenuItem* p_menu_item){
+  myConfig.visualizationMode=VIS_NOTE;
   saveConfig((uint8_t*)&myConfig,sizeof(configStruct));
   ms.back();
   displayMenu();
